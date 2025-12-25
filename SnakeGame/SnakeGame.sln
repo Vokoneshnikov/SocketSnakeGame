@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnakeGameServer", "SnakeGameServer\SnakeGameServer.csproj", "{797671A2-FF38-4758-9833-5F8BF2EB8E07}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnakeGameClient", "SnakeGameClient\SnakeGameClient.csproj", "{40247445-7FBA-4559-AC95-73939FB9202E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnakeGameCore", "SnakeGameCore\SnakeGameCore.csproj", "{01A58918-7B8A-4484-965F-C41044885A03}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{797671A2-FF38-4758-9833-5F8BF2EB8E07}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{797671A2-FF38-4758-9833-5F8BF2EB8E07}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{797671A2-FF38-4758-9833-5F8BF2EB8E07}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{797671A2-FF38-4758-9833-5F8BF2EB8E07}.Release|Any CPU.Build.0 = Release|Any CPU
+		{40247445-7FBA-4559-AC95-73939FB9202E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{40247445-7FBA-4559-AC95-73939FB9202E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{40247445-7FBA-4559-AC95-73939FB9202E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{40247445-7FBA-4559-AC95-73939FB9202E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{01A58918-7B8A-4484-965F-C41044885A03}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{01A58918-7B8A-4484-965F-C41044885A03}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{01A58918-7B8A-4484-965F-C41044885A03}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{01A58918-7B8A-4484-965F-C41044885A03}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
