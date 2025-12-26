@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-
-namespace SnakeGame.Client;
+using SnakeGame;
+using SnakeGame.Client;
 
 public sealed class ClientState
 {
@@ -12,10 +12,13 @@ public sealed class ClientState
 
     public int LastTick { get; set; }
 
-    // Данные для рендера
     public List<ClientPlayer> Players { get; } = new();
     public List<ClientFood> Foods { get; } = new();
-
-    // Ссылка на сетевой клиент, чтобы хендлеры могли отправлять команды
+    
     public NetworkClient? Network { get; set; }
+
+    public object SyncRoot { get; } = new();
+
+    // новое: находимся ли в лобби (нет активной сессии)
+    public bool InLobby => CurrentSessionId == null;
 }

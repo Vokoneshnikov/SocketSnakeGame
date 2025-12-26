@@ -13,7 +13,7 @@ public sealed class ServerHelloHandler : IClientCommandHandler
         _state = state;
     }
 
-    public async Task InvokeAsync(byte[] payload, CancellationToken ct = default)
+    public Task InvokeAsync(byte[] payload, CancellationToken ct = default)
     {
         using var reader = new PacketReader(payload);
 
@@ -26,19 +26,7 @@ public sealed class ServerHelloHandler : IClientCommandHandler
 
         Console.WriteLine($"[Client] ServerHello: success={success}, version={version}");
 
-        // Если рукопожатие прошло, сразу просим сервер создать игровую сессию
-        if (success && _state.Network != null)
-        {
-            Console.WriteLine("[Client] Sending CreateSessionRequest after ServerHello");
-
-            await _state.Network.SendPacketAsync(
-                Command.CreateSessionRequest,
-                w =>
-                {
-                    // служебный байт, чтобы не ломать серверный обработчик
-                    w.WriteByte(0);
-                },
-                ct);
-        }
+        // дальше клиент остаётся в лобби и ждёт нажатия кнопок Create/Join
+        return Task.CompletedTask;
     }
 }

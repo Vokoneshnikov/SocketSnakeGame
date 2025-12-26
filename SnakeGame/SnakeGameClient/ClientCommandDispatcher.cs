@@ -13,7 +13,7 @@ public sealed class ClientCommandDispatcher
         _handlers[Command.ServerHello]           = new ServerHelloHandler(state);
         _handlers[Command.CreateSessionResponse] = new CreateSessionResponseHandler(state);
         _handlers[Command.JoinSessionResponse]   = new JoinSessionResponseHandler(state);
-        _handlers[Command.ListSessionsResponse]  = new ListSessionsResponseHandler();
+        _handlers[Command.ListSessionsResponse]  = new ListSessionsResponseHandler(state);
         _handlers[Command.GameStateSnapshot]     = new GameStateSnapshotHandler(state);
     }
 

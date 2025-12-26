@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Sockets;
+using SnakeGame;
 
 namespace SnakeGame.Server;
 
@@ -9,10 +10,27 @@ public sealed class GameLoop
     private readonly ConcurrentDictionary<Guid, GameSession> _sessions;
     private readonly ConcurrentDictionary<Guid, SessionConnections> _sessionConnections;
     private readonly Random _random = new();
+
     private int _tick;
 
-    // радиус поедания
     private const float EatRadius = 10f;
+    private const float RespawnDelay = 3f;      // сек до респавна
+    private const float CollisionRadius = 6f;   // радиус попадания головы в сегмент
+
+    // Жёсткий максимум длины змеи (в тех же единицах, что MaxLength)
+    private const float HardMaxLength = 2000f;
+
+    // Жёсткий максимум количества еды, которая может выпасть с трупа
+    private const int MaxFoodFromCorpse = 200;
+
+    // Жёсткий потолок общего количества еды в мире
+    private const int HardFoodLimit = 500;
+
+    // Сколько сегментов максимум у игрока (для защиты от роста списка)
+    private const int MaxSegmentsPerPlayer = 2000;
+
+    // Сколько сегментов максимум отправляем в снапшоте на клиента
+    private const int MaxSegmentsInSnapshot = 500;
 
     public GameLoop(
         ConcurrentDictionary<Guid, GameSession> sessions,
@@ -52,8 +70,20 @@ public sealed class GameLoop
     {
         var world = session.World;
 
+        // 1. движение, стены, еда, респавн
         foreach (var player in world.Players)
         {
+            // респавн после смерти
+            if (!player.IsAlive && player.PendingRespawn)
+            {
+                player.TimeSinceDeath += dt;
+                if (player.TimeSinceDeath >= RespawnDelay)
+                {
+                    RespawnPlayer(session, player);
+                }
+                continue;
+            }
+
             if (!player.IsAlive || player.Segments.Count == 0)
                 continue;
 
@@ -61,21 +91,27 @@ public sealed class GameLoop
             float newX = head.X + (float)(Math.Cos(player.Angle) * player.Speed * dt);
             float newY = head.Y + (float)(Math.Sin(player.Angle) * player.Speed * dt);
 
-            // 1. коллизия со стенами
+            // коллизия со стенами
             if (newX < 0 || newX > world.Width || newY < 0 || newY > world.Height)
             {
-                player.IsAlive = false;
-                player.Speed = 0;
+                HandleDeath(world, player);
                 continue;
             }
 
-            // 2. движение
+            // движение
             player.Segments.Add(new WormSegment { X = newX, Y = newY });
 
-            // 3. поедание еды
+            // ограничиваем список сегментов жёстким пределом
+            if (player.Segments.Count > MaxSegmentsPerPlayer)
+            {
+                int toRemove = player.Segments.Count - MaxSegmentsPerPlayer;
+                player.Segments.RemoveRange(0, toRemove);
+            }
+
+            // поедание еды
             CheckFoodCollision(world, player, newX, newY);
 
-            // 4. длина и хвост
+            // длина и хвост
             player.CurrentLength = player.Segments.Count * player.SegmentSpacing;
 
             while (player.CurrentLength > player.MaxLength && player.Segments.Count > 1)
@@ -83,14 +119,150 @@ public sealed class GameLoop
                 player.Segments.RemoveAt(0);
                 player.CurrentLength = player.Segments.Count * player.SegmentSpacing;
             }
-
-            // TODO: коллизии с телами
         }
 
-        // 5. спавн еды по MaxFoodCount
+        // 2. коллизии голов с сегментами других игроков (без своего тела)
+        CheckPlayersCollision(world);
+
+        // 3. спавн еды
         SpawnFoodIfNeeded(world);
 
-        // BroadcastSnapshot(session, tick);
+        // 4. снапшот
+        BroadcastSnapshot(session, tick);
+    }
+
+    private void CheckPlayersCollision(GameWorld world)
+    {
+        if (world.Players.Count < 2)
+            return;
+
+        float radius2 = CollisionRadius * CollisionRadius;
+
+        var killed = new List<Player>();
+
+        foreach (var player in world.Players)
+        {
+            if (!player.IsAlive || player.Segments.Count == 0)
+                continue;
+
+            var head = player.Head;
+            float hx = head.X;
+            float hy = head.Y;
+
+            foreach (var other in world.Players)
+            {
+                if (other == player)
+                    continue;
+
+                // НЕ учитываем трупы как препятствия
+                if (!other.IsAlive || other.Segments.Count == 0)
+                    continue;
+
+                for (int i = 0; i < other.Segments.Count; i++)
+                {
+                    var seg = other.Segments[i];
+
+                    float dx = seg.X - hx;
+                    float dy = seg.Y - hy;
+                    float dist2 = dx * dx + dy * dy;
+
+                    if (dist2 <= radius2)
+                    {
+                        killed.Add(player);
+                        goto NextPlayer;
+                    }
+                }
+            }
+
+        NextPlayer:
+            ;
+        }
+
+        foreach (var p in killed.Distinct())
+        {
+            HandleDeath(world, p);
+        }
+    }
+
+    private void HandleDeath(GameWorld world, Player player)
+    {
+        if (!player.IsAlive)
+            return;
+
+        player.IsAlive = false;
+        player.Speed = 0f;
+        player.PendingRespawn = true;
+        player.TimeSinceDeath = 0f;
+
+        // сбрасываем счёт при смерти
+        player.Score = 0;
+
+        // Ограниченная "полоска" еды по телу
+        int totalSegments = player.Segments.Count;
+        if (totalSegments == 0)
+            return;
+
+        int foodSpawned = 0;
+
+        // Если сегментов мало, можно брать каждый; если много — разреженно
+        int step = totalSegments <= MaxFoodFromCorpse
+            ? 1
+            : Math.Max(1, totalSegments / MaxFoodFromCorpse);
+
+        for (int i = 0; i < totalSegments && foodSpawned < MaxFoodFromCorpse; i += step)
+        {
+            var seg = player.Segments[i];
+
+            int nextId = world.Foods.Count == 0
+                ? 1
+                : world.Foods[^1].Id + 1;
+
+            world.Foods.Add(new Food
+            {
+                Id = nextId,
+                X = seg.X,
+                Y = seg.Y
+            });
+
+            foodSpawned++;
+        }
+
+        // после массового добавления следим, чтобы еды не стало слишком много
+        if (world.Foods.Count > HardFoodLimit)
+        {
+            int toRemove = world.Foods.Count - HardFoodLimit;
+            world.Foods.RemoveRange(0, toRemove);
+        }
+    }
+
+    private void RespawnPlayer(GameSession session, Player player)
+    {
+        var world = session.World;
+
+        player.PendingRespawn = false;
+        player.TimeSinceDeath = 0f;
+        player.IsAlive = true;
+
+        // счёт уже обнулён в HandleDeath, при респавне его не трогаем
+
+        player.MaxLength = 100f;
+        player.CurrentLength = 0f;
+        player.Speed =100;
+        player.Angle = 0f;
+
+        player.Segments.Clear();
+
+        float margin = 20f; // отступ от стен, чтобы не появляться прямо у границы
+
+        float spawnX = (float)_random.NextDouble() * (world.Width  - 2 * margin) + margin;
+        float spawnY = (float)_random.NextDouble() * (world.Height - 2 * margin) + margin;
+
+        player.Segments.Add(new WormSegment
+        {
+            X = spawnX,
+            Y = spawnY
+        });
+
     }
 
     private void CheckFoodCollision(GameWorld world, Player player, float headX, float headY)
@@ -112,20 +284,25 @@ public sealed class GameLoop
             {
                 world.Foods.RemoveAt(i);
 
-                player.MaxLength += 20f;
+                // очки всегда растут
                 player.Score += 1;
+
+                // длина растёт только пока не достигнут жёсткий максимум
+                if (player.MaxLength < HardMaxLength)
+                {
+                    player.MaxLength = Math.Min(player.MaxLength + 20f, HardMaxLength);
+                }
             }
         }
     }
 
     private void SpawnFoodIfNeeded(GameWorld world)
     {
-        // используем MaxFoodCount из GameWorld
         while (world.Foods.Count < world.MaxFoodCount)
         {
             int nextId = world.Foods.Count == 0
                 ? 1
-                : world.Foods[^1].Id + 1; // можно заменить на свой генератор Id
+                : world.Foods[^1].Id + 1;
 
             var food = new Food
             {
@@ -135,6 +312,13 @@ public sealed class GameLoop
             };
 
             world.Foods.Add(food);
+        }
+
+        // Жёсткая подстраховка от переполнения еды
+        if (world.Foods.Count > HardFoodLimit)
+        {
+            int toRemove = world.Foods.Count - HardFoodLimit;
+            world.Foods.RemoveRange(0, toRemove);
         }
     }
 
@@ -159,21 +343,36 @@ public sealed class GameLoop
             writer.WriteFloat(p.Angle);
             writer.WriteInt(p.Score);
 
-            ushort segmentCount = (ushort)Math.Min(p.Segments.Count, ushort.MaxValue);
+            // Ограничиваем количество сегментов, отправляемых клиенту
+            int realCount = p.Segments.Count;
+            int limited = Math.Min(realCount, MaxSegmentsInSnapshot);
+            ushort segmentCount = (ushort)limited;
             writer.WriteUShort(segmentCount);
 
-            for (int i = 0; i < segmentCount; i++)
+            if (limited == 0)
+                goto AfterSegments;
+
+            int step = realCount <= limited
+                ? 1
+                : Math.Max(1, realCount / limited);
+
+            int written = 0;
+            for (int i = 0; i < realCount && written < limited; i += step, written++)
             {
                 writer.WriteFloat(p.Segments[i].X);
                 writer.WriteFloat(p.Segments[i].Y);
             }
+            AfterSegments:
+            ;
         }
 
         var foods = session.World.Foods;
-        writer.WriteUShort((ushort)foods.Count);
+        writer.WriteUShort((ushort)Math.Min(foods.Count, ushort.MaxValue));
 
-        foreach (var f in foods)
+        int foodsToSend = Math.Min(foods.Count, ushort.MaxValue);
+        for (int i = 0; i < foodsToSend; i++)
         {
+            var f = foods[i];
             writer.WriteInt(f.Id);
             writer.WriteFloat(f.X);
             writer.WriteFloat(f.Y);
@@ -182,12 +381,8 @@ public sealed class GameLoop
         byte[] packet = writer.BuildPacket(Command.GameStateSnapshot);
 
         if (!_sessionConnections.TryGetValue(session.SessionId, out var conns))
-        {
-            
-            Console.WriteLine($"[Server] No connections for session {session.SessionId}");
             return;
-        }
-        Console.WriteLine($"[Server] Broadcast tick={tick} to {conns.Connections.Count} connections");
+
         foreach (var conn in conns.Connections)
         {
             try

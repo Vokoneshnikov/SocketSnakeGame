@@ -19,10 +19,7 @@ internal class Program
         var gameLoop = new GameLoop(sessions, sessionConnections);
 
         var cts = new CancellationTokenSource();
-
-        Console.WriteLine("Snake server prepared. Press ENTER to start...");
-        Console.ReadLine(); // Пауза перед запуском
-
+        
         Console.WriteLine("Snake server starting...");
 
         await Task.WhenAll(

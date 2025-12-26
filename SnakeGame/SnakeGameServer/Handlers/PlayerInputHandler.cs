@@ -24,7 +24,6 @@ public sealed class PlayerInputHandler : ICommandHandler
             return Task.CompletedTask;
 
         player.Angle = angle;
-        // сюда же позже можно добавить обработку флагов (ускорение и т.д.)
 
         return Task.CompletedTask;
     }

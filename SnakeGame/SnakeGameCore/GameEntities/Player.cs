@@ -1,5 +1,4 @@
-﻿namespace SnakeGame;
-
+﻿using SnakeGame;
 public class Player
 {
     public ushort Id { get; set; }
@@ -17,6 +16,10 @@ public class Player
     public float SegmentSpacing { get; set; } = 6f;
 
     public List<WormSegment> Segments { get; } = new List<WormSegment>();
-
+    
     public WormSegment Head => Segments.Count > 0 ? Segments[^1] : null;
+
+    // новое:
+    public bool PendingRespawn { get; set; }
+    public float TimeSinceDeath { get; set; }
 }
